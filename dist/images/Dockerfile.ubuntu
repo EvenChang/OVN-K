@@ -8,24 +8,25 @@
 #
 # So this file will change over time.
 
-FROM ubuntu:22.04
+FROM ubuntu:23.10
 
 USER root
 
 RUN apt-get update && apt-get install -y iproute2 curl software-properties-common util-linux
 
-RUN echo "deb https://apt.kubernetes.io/ kubernetes-xenial main" | tee -a /etc/apt/sources.list.d/kubernetes.list
 RUN curl -s https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add -
 
 # Install OVS and OVN packages.
-RUN apt-get update && apt-get install -y openvswitch-switch openvswitch-common ovn-central ovn-common ovn-host kubectl
+RUN apt-get update && apt-get install -y openvswitch-switch openvswitch-common ovn-central ovn-common ovn-host
+RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
+    && install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
 
 RUN mkdir -p /var/run/openvswitch
 
 # Built in ../../go_controller, then the binaries are copied here.
 # put things where they are in the pkg
 RUN mkdir -p /usr/libexec/cni/
-COPY ovnkube ovn-kube-util ovndbchecker /usr/bin/
+COPY ovnkube ovn-kube-util hybrid-overlay-node ovndbchecker /usr/bin/
 COPY ovn-k8s-cni-overlay /usr/libexec/cni/ovn-k8s-cni-overlay
 
 # ovnkube.sh is the entry point. This script examines environment

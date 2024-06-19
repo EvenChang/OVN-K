@@ -31,7 +31,7 @@ endif
 	# This is the default in the ovnkube*.yaml files
 	# ${OCI_BIN} login -u ovnkube docker.io/ovnkube
 	# ${OCI_BIN} push docker.io/ovnkube/ovn-daemonset-u:latest
-	./daemonset.sh --image=docker.io/ovnkube/ovn-daemonset-u:latest
+	#./daemonset.sh --image=docker.io/ovnkube/ovn-daemonset-u:latest
 
 fedora: bld
 	${OCI_BIN} build -t ovn-kube-f -f Dockerfile.fedora .
