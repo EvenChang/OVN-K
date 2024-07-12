@@ -1,0 +1,119 @@
+# ovnkube-identity
+# starts ovnkube-identity
+# it is run on the master(s).
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: ovnkube-identity
+  # namespace set up by install
+  namespace: ovn-kubernetes
+  annotations:
+    kubernetes.io/description: |
+      This Deployment launches the ovnkube-identity networking component.
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      name: ovnkube-identity
+  strategy:
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: ovnkube-identity
+        name: ovnkube-identity
+        component: network
+        type: infra
+        kubernetes.io/os: "linux"
+    spec:
+      priorityClassName: "system-cluster-critical"
+      serviceAccountName: ovnkube-identity
+      hostNetwork: true
+      dnsPolicy: Default
+
+      # required to be scheduled on a linux node with node-role.kubernetes.io/control-plane label and
+      # only one instance of ovnkube-control-plane pod per node
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/control-plane
+                    operator: Exists
+                  - key: kubernetes.io/os
+                    operator: In
+                    values:
+                      - "linux"
+      containers:
+      - name: ovnkube-identity
+        image: "ecpaas-dockerhub.atan-networks.com.cn/ovn-kubernetes/ovn-kube-u:master"
+        imagePullPolicy: "IfNotPresent"
+        command: ["/root/ovnkube.sh", "ovnkube-identity"]
+        securityContext:
+          runAsUser: 0
+        terminationMessagePolicy: FallbackToLogsOnError
+        resources:
+          requests:
+            cpu: 100m
+            memory: 300Mi
+        volumeMounts:
+          - mountPath: /etc/webhook-cert/
+            name: webhook-cert
+        env:
+          - name: OVN_DAEMONSET_VERSION
+            value: "3"
+          - name: K8S_APISERVER
+            valueFrom:
+              configMapKeyRef:
+                key: k8s_apiserver
+                name: ovn-config
+          - name: OVNKUBE_LOGLEVEL
+            value: "4"
+          - name: OVN_ENABLE_INTERCONNECT
+            value: ""
+          - name: OVN_HYBRID_OVERLAY_ENABLE
+            value: ""
+      volumes:
+        - name: webhook-cert
+          secret:
+            secretName: ovnkube-webhook-cert
+      tolerations:
+      - operator: "Exists"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ovnkube-webhook-cert
+  namespace: ovn-kubernetes
+data:
+  tls.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUUwekNDQXJ1Z0F3SUJBZ0lVTFVERXRiVllmS0MxWkoyOUwwVUdxZkcxem13d0RRWUpLb1pJaHZjTkFRRUwKQlFBd0dURVhNQlVHQTFVRUF3d09jMlZzWmkxemFXZHVaV1F0WTJFd0hoY05NalF3TmpFek1ESTBPVEk1V2hjTgpNalV3TmpFek1ESTBPVEk1V2pBVU1SSXdFQVlEVlFRRERBbHNiMk5oYkdodmMzUXdnZ0lpTUEwR0NTcUdTSWIzCkRRRUJBUVVBQTRJQ0R3QXdnZ0lLQW9JQ0FRQzNCQUFPSzZianNTWjdUanpYK09wWk51Vm9nZkliSDNCRUNSUWUKRDBmN3Erbk10VGhZbXJhUFU2SExFeUROZUVnZkV3VkhQMjJLTG5ubzhSOTBxdTZIV3pyUFB0UTBkNTRiVFhoQQphSW9WZjY5Sm4xWklrVjFxcEFJVHNxaVBiZ25vaTZGVWxjbXhYNUdIejNzY3kzMVRDd3VkZ3d4enRxVGRUZUgyCkNnYTZBRUZmRnRmbUEvcmZMOVM2ZktuWEduZTMwWG94NVJ3VXlHUDJtOSt4TVIwZm40UUNYNzRlYXR4S1lmZkUKWDhiMzYzOG9BMVhPMzNTS25TYzlBaHM0ZnpYZjl5b3ZxK0NBRzQrY3dSblV2VkFCSUFyaGhtWUVrS1pOTjd6MgpuTWdVa3N3QmhUbU9aK1RJZU9uYnVneW1Xanh4TmZXaVgxMVdzSlBPZDl6VnlYaTh5RlNOOFdBeXRob0pRa3JYCmZKd2xnUWxmYXp1MnRSeXNvVGxmd0ROdis5akJHdit3RnZsdzloUUM3NlgzR2xGOFRRVmU2Q3ZKQlAzZWl4ZG8KdlE0Mm5sQzN5a05vN3diaW13alpRUUYvbk5EQ280MjRIN2lITWMwUGdvOEFaYmJBaVMwckhOaHpyTFY3Q0hWbwpYbVlKSDkzajRLR3F4TGlucUIweWZNVmh6NERPRTBhbUxOOGQ4MEY5YXc0eFFYN3VxVXFDVmErWXNCL3lUSDQ4ClUzc1RYajlBMkZhQlFLQ0JsVzZpVnFSeEEwcTVFRnhWbE55VlQ5cFhmdVJndlgrZnl4c0d0MlZUVDNTall5ZDIKdXlqTGpEeThIUkZERnNhb3pEUlBBNHBFKzJyVEVmK3BUZmNmTmIxUncrd2Npa3d3VWdRYlFNa0xNcVBZa3g2dQpIUXJiNlFJREFRQUJveGd3RmpBVUJnTlZIUkVFRFRBTGdnbHNiMk5oYkdodmMzUXdEUVlKS29aSWh2Y05BUUVMCkJRQURnZ0lCQUdaQW9TeTZFVDQzUHphOW9wdnNwdnBlem80VTNieXVNNk5nYm9RWUZ1ZmRWS0p6VmJ4aVBZSDMKdHYyY3M5empOQko4cFNOa1lndTVlVXNzcHZSVkFLVUovQXhqYkYwaGh3bG9VYk1GMlNtOHNSM0RFem1qYXErUApCVDlDQVZFYVJrLzhMamtvVlh6VXJxRTRkcXFPTjdxdVJsYjU2cUlyTWtObXZ3M1pKMzRwd3N2Uzk3SUhKVUdnCktIdWlNRUlnWnhNMHl4S21nM1BmVU9MQWlJdTRONUFZZzVrMFNaamtYbzhLNTR0b0pPQmplOHFqajc3bWpzQjUKNDRZQmZVSkQ1QlA4VkdMSUFHRHNFR1FZd1pPSUl3NmErYVBKd04rcEtqdmdFaVVOd3BNTHZ1WmtpaytKNXNhcAowcExTaWV1MHQ0emYrRW5xUlYrRUE0VmpObm85aVM3MXZRYjVOcEJTOVZJYWdqQ2F3VzMwM3lSQXlTT1R2Y2tYCnlCOVFTNHQram1QR0F0YkhXRE5TM3pwOVZWQjhvc0xGUDF3MndvdnRJQVR5cDcxbDBnYWJ0SmIvTTRWcTREMmsKc2lPa2xDTmoyVXpWcTI1SUY0K015RVNPRkRpMjRIMWNyRFJoQ3EvNUVlOWRsT05GbkMwOTFPdXlMTWh1Tk1aUQpPSThMeXUrcVArbVZhcnQxRWNpbnoxa1g5YWM4MDRCWWxhbkVNTFdkOEt5TUphaVVSU2VZWnNiZ285eUxkcmhlCnp2c3BIU1MxT3dSamsrOVJJbzZqdm52VE8xa3NldTBSajk2K0Z2d2Rzbk1xQUltUTc0bXdaNVY1NHFQeXhYT2EKQTk2VGxzbmJYQnNOS3FrM2NvVmtrUlVTbDVWc0U4OEQ0dTc5Q2duOElxVWw2TytKWXlmNwotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+  tls.key: LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JSUpSQUlCQURBTkJna3Foa2lHOXcwQkFRRUZBQVNDQ1M0d2dna3FBZ0VBQW9JQ0FRQzNCQUFPSzZianNTWjcKVGp6WCtPcFpOdVZvZ2ZJYkgzQkVDUlFlRDBmN3Erbk10VGhZbXJhUFU2SExFeUROZUVnZkV3VkhQMjJLTG5ubwo4UjkwcXU2SFd6clBQdFEwZDU0YlRYaEFhSW9WZjY5Sm4xWklrVjFxcEFJVHNxaVBiZ25vaTZGVWxjbXhYNUdICnozc2N5MzFUQ3d1ZGd3eHp0cVRkVGVIMkNnYTZBRUZmRnRmbUEvcmZMOVM2ZktuWEduZTMwWG94NVJ3VXlHUDIKbTkreE1SMGZuNFFDWDc0ZWF0eEtZZmZFWDhiMzYzOG9BMVhPMzNTS25TYzlBaHM0ZnpYZjl5b3ZxK0NBRzQrYwp3Um5VdlZBQklBcmhobVlFa0taTk43ejJuTWdVa3N3QmhUbU9aK1RJZU9uYnVneW1Xanh4TmZXaVgxMVdzSlBPCmQ5elZ5WGk4eUZTTjhXQXl0aG9KUWtyWGZKd2xnUWxmYXp1MnRSeXNvVGxmd0ROdis5akJHdit3RnZsdzloUUMKNzZYM0dsRjhUUVZlNkN2SkJQM2VpeGRvdlE0Mm5sQzN5a05vN3diaW13alpRUUYvbk5EQ280MjRIN2lITWMwUApnbzhBWmJiQWlTMHJITmh6ckxWN0NIVm9YbVlKSDkzajRLR3F4TGlucUIweWZNVmh6NERPRTBhbUxOOGQ4MEY5CmF3NHhRWDd1cVVxQ1ZhK1lzQi95VEg0OFUzc1RYajlBMkZhQlFLQ0JsVzZpVnFSeEEwcTVFRnhWbE55VlQ5cFgKZnVSZ3ZYK2Z5eHNHdDJWVFQzU2pZeWQydXlqTGpEeThIUkZERnNhb3pEUlBBNHBFKzJyVEVmK3BUZmNmTmIxUgp3K3djaWt3d1VnUWJRTWtMTXFQWWt4NnVIUXJiNlFJREFRQUJBb0lDQVFDSkpkNUV3RUdZYjdDK3hxcWh6azhQCi9DdCtYYUxvNEc1cERjU2RvaVgzVzZVaFdzeVcyWm5sWG03b2w3VUZSUllHODJJSk9tY0VIa0FOYUdTQ01YWCsKeVVjUTk2eGVoU1Zlb0hkMURPSXRxam5abWlZMnkzaU42Y29FcU9YWVZrWG1sbnlYdm9nZSs5YzdSeWlqTTNyLwpPRS9FQWVqYTdnd3VLNmNoa2ZIb2dUaDc0Y3A0L0pLTG5uUjBLK2U2NG9MRXBaNUV0Y1NOYm40NjJDU1J6SlJlCmxsTiswL0ROS3BkYXhuKytFV2d4Y2JFZ2N4OWluK0hkM2xjQlNRck5FOGR6eHUwK1BEZEl5VjZkd2JkeHpVeWYKQ3p3Y05YTk9DSGdYZGFXTnlYL0dxeHRtS0VneGgzblRJWWxldDlXeTgveEhlb0JRNWRZMG1LNnJFdmZTM2VBegprZ2xFTFlvbXU5TmdweTZYQkkrcDJlN0VJL1JNTGs1eHJzOGhCN0tMeXhtNk1mZkxzR08wVTJSY2FweFA4TDhhCkJlREsvRmVwTWd0NlEwdXF5V1ZlbStNcDNUOWxIV3F2ZExmZXJrZTBzQjlzVGRpTFVWUkJvc2xvbzZhQ2NuajQKT2haZ2I1bndENWx0cUJFM3FrdnNjeDA4Y09VSE15NEZLcE90SkJLL3JhekNBMktvRy94eGJJaDJ1NDUraHkrOQo4WlUwVVRKU1BFK1FxSm14SVhydkZqNFQyQjhralJRbXY2Q0lkNUtKYlJndFdUeVJCczVDb0hVVDIwajl3Zmx4CmUyT2hoRngyY1VXdGY1Q0VlRFdLTk8yWWJ1ZDlGVklaUnBwS0JNMWdjNldrbWxCc0praWlaMWFjbzJydVVOb3YKTUVycTJkZklwYnIyQnI3dVBGdllBUUtDQVFFQThvRVVHc3lORkNaWWd6SEhiNUswUXk2eHVQdmJFTU9ybzhOVwowT1lZak02bWsvL0p3MFdYdEVLdnBZMGFyZ2NFUzVCMnZWNGNFNXFWd2wrMndwVXRSRGhzRnB6RnVVZzVpNE1PClA1a3pxdE40aE9QaDZjeVJUTUs3anpSSWt3RkRaRXZJRjA3VWVuVzVaSVBQWWlRaGVvajM4b3I1NDJPbnMwUU8KM2RicmdqMG42d2hGbVdFVnJpQUQ3bjlMWUZUTTMxVTdYMXVLKzlCc2ZvNEpaaGt2VGlDMnl5emhmcDhBbit0YwpKdGljYkFTVmtzWDdrTndwR25oSGVWNk5oUkYxbEtWT0JhR3d6MWR6MTdUYlJyQ0ltQjR6aldkc0w4RkY5V2EvCjVleUxEOHhwQWQ2RFRjSG9KNUQxY0M2ckxZUWR5VStEU2JENTlYSEhFK1RGb0NjTklRS0NBUUVBd1RObGlVWEYKQ3pGM3BSOVR3WnQ4YzJVQ2F2QnE2V1BqUlpsUWY4YXNEbmxLb1cxcTd4VUhOME9MVnlWR1JrUFM3Y0poMHFKeAo0czlaamRqYmNiR3FlZnlUbDJtK0NrQ0lTWDF2Wmg5dUpBSTZsR2FSVDd5U3ZGTWVqQ1phSGVDWDI3UUEzbk9sCnZEcUVOU2F2RVlHTDZOWVNHSWc5dm1iRE1nOXZUd2loYXdQdW9kRjZrQXlVRmtxSVdrdDFETUF2aXc2a1lVRjYKbDN4ek5JSnZGYStJME4vUGlMUzJnUjIzRVJTa1dKcitheVY1YlpzaXFVNTZqMnFNQ1lyZGkvWDNPcnAxem9HbQpXVVR1ekUxdVZNUlBrM1ZUZnB1NVQ4YjN0T0c5S0d0ekc0QkRjczhCbWxtZHVPNlUwaU1FTmxTNmN3MUdQN2tFCnlKVDJiS1RDeGZydHlRS0NBUUFPZm5LQ0s0bWZFNitrbjd3SXloN21DUXRzUC9sVzVpc0REYkRKcVliOEczblAKVExGMWIxcGkxcjJDeW8wMnE0cXhMWUE3VHoya1drL3JIeWRnTitSTnVJV1ZVR2RzN0lrcjhuaE9pc3lRd0RUcQoxR2Z6UGx2TTE3SzRHMnJmQm10TnVrM0tQdGJxUHRFRzFlMzJNcXloazBBbWlmSG5pbFJDbmFXNTBwZWU0Q0xiCnBGSHNtZVhlMDJFSXh5anRLQVJhc05Cc29aOEw3K2djSkVjaGlBM1F3Sm5NU1BGdFRQbVBsVlNicWNTbm5CcUkKZkRiTjhLcXdQMUllU2UxeGI1cTBlTERTRzFqaSs1b2I0VjVkdWoxZndpWllwRDdPRitJamliR2NmMmZNV081Sgp3MC9idk9Rd1FUUzZNTC9nWjQ0VU15Rm9yU0F6Y0VweXdQQ2k0dEtoQW9JQkFRQ2VpZUdSUXRxTjg5cmRlaGFOCjhseXVpTDN5S1RWaUxlQ3JGVU5VaHlCYmhEYTB2d2dZQnVaeitBNVl4YktrS0RYbmV6SXcyYktnejB3S3RXQm0KTE1mYThHUGd4Um40YWJvc3JDMEUzVmZSWHE3WlprMXA1REY1THJBTGk5RTVZVHJjUkJyT2NKSVpJdCtvaWdUeApWYUFNd2RYNW9ac2hLa3lWUU1zelRMN0JCV29HQ2RNTWIvWDVVTklSWG9nL25WbW1QNjZ1VEVBZ0hUU2dhMFJpCnhEZCtSNXFTOE5BdXBjYTYwbmlHYVRITGxPWFBCcFhyM3dWOXVJNFBxbzlnc2NkZHZ2SzdNZkxpb0VsaEIwMDUKYkJwc3c4TnZTclJIZmR0NDZDRUVFU0JVK2V6ZlFuVnJSb3pCMjYzdHZtUlBmVG0rL2E2ZXplSGFBenN3TGdmUwoxTFhaQW9JQkFRRGp6VmFLKzJSZjNTS3o4VDV4K0tzRlN2cGhKMVhpTVhuU0YvdTcyNHE4Mm5vd2pQbk8zVUkrCkFQTDJxM29tQXpCT214bUpWVDBreDJ2eVNzMTIyT1pUU2NqTFZUN1hnZWZwUnJndE9iY2FVRVBqRXVKb0o5NW0KYWgwaE40bnlTNHZmQWN4YTVHTGNiQzhWQjJNWGxPT0FOeGRkTjkxL1hTTE1YK1B6VjZzWEg4WXJmV1BUMDYwUwpDYVZURGFGclp1R2FZT2ZMbjdKd1BEakJITUhwcnk0N1hyS29ZK3d4MnRYWE9Yc2tNZkFBYm0rcmZEZ2lPdGRCCndtZzc0NDhKK1hyQ1pLTC8ydm5oaEp3Z0FUYTNUdElqMXJpalFvVW5nYmQ5U2pNN21iV3lSWXZlU2tpNjcyYlAKY00zVFpPdHR4RDNMeEZxYTVlZ1kvejFWOGlpZklKN00KLS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLQo=
+type: kubernetes.io/tls
+
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: ovn-kubernetes-admission-webhook-node
+webhooks:
+  - name: ovn-kubernetes-admission-webhook-node.k8s.io
+    clientConfig:
+      url: https://localhost:9443/node
+      caBundle: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUZFekNDQXZ1Z0F3SUJBZ0lVVXdsVEozdXhqZkhlQ1lha3UwTTF2c1c0bWM4d0RRWUpLb1pJaHZjTkFRRUwKQlFBd0dURVhNQlVHQTFVRUF3d09jMlZzWmkxemFXZHVaV1F0WTJFd0hoY05NalF3TmpFek1ESTBPVEk1V2hjTgpNalV3TnpFNE1ESTBPVEk1V2pBWk1SY3dGUVlEVlFRRERBNXpaV3htTFhOcFoyNWxaQzFqWVRDQ0FpSXdEUVlKCktvWklodmNOQVFFQkJRQURnZ0lQQURDQ0Fnb0NnZ0lCQU84Z21rcXRCblVaQmZOWTBwTFFEVWhYU2E0ZnJBTmcKUFRmcktNbmFJZUN6STN5U2tmZ0hsL1h4Y1QrSU14cWNibDNid2lRZVRLbXJOdTdzKzFjTHFTcHYreFJRMmIrUApDTG5HMUU5VGMzNWVTL3gxbDM0TTdlRVRCeG1BaDlReVgxaTVwV3ZQSmZ1U2RmRzByL3psSmdWN0dLWkRhOVN6ClR4bHdZZURvYkN0c3lmMGpvWnQrMW45WEh0Q0pyYUFERXNaV1RGTmsrWWUrNkZpeFdrNk5pRVVjOUdyV1hNMXoKQWdseks5ZWdVWDBTUnlYT0wxeEoxQkw0UXM2aFE4YXNrL3JSM2lUTzJpWVRLL1VHTGNCV290R2xZV1FtNkZ5KwpoZWs2QVJRTVA3bmEwamF5dWEzY1NPcWttL1N4QVhLTmNkQXBONGZKd2FRdzBpR3lMQ2wvVFpETFBXT3ZidDg4CmtJMXUvaHhNUndKa2V0RGxMcWl0VmgvaHRwbDJHVndIUy85N1JqU2tVbzdPVFMxZUF1dFNNejcxaGVudnpvSmUKazhVQXIxQ0ZjSUNMRjBLTnpzczh4ZitMNyt1bTlPZk5qSDNMZitiY1R0MUFPcnFEVXlObmhEQnp5bFZ6NDB2UApmZFJOT1VIL2phNlhQVzE2a1pjcnF6UDdqcEJQN3FPMGgxVTJ5T0h2ZFBTcHVSOWxBU3prT3BGZWVCY1oxOGI3CkhuMEoxenF1Y0dqMjdnK0pudGZad0NpcTg3bnVRVkdmODZOYlVPc0dPNDl2M0w3czl6eFYrRTFLbnhOU3VUK2oKT3Mwc0pHeGtiU3FzTHFwV3dDcGJzckxHYURoYmpNNXJtOGYzYjhjY2c5bTJKMUgzMnVNckhueHovbllIc01zcwp1cGJjZ0NVZzFJSGpBZ01CQUFHalV6QlJNQjBHQTFVZERnUVdCQlRWN3orVzBRZlVKbk5JMHhLZDYrSFR1Rkk5CkRUQWZCZ05WSFNNRUdEQVdnQlRWN3orVzBRZlVKbk5JMHhLZDYrSFR1Rkk5RFRBUEJnTlZIUk1CQWY4RUJUQUQKQVFIL01BMEdDU3FHU0liM0RRRUJDd1VBQTRJQ0FRQ0U1YlhJd1YwYWgzblFXRmd5UG14bHArMzhxMjNYYUlLRgoyOC9WUTJQbW16WGdoWWV3UXlyMFJrYlB4eEpZSnNHdndxYlU2bFBvNEc0Sy80TE0rNlhHM3M3eU45SFU3Skd5CmJkM0RyWENvdjJQbko4eWRUbUVsUS9kY0ZxRE9QZXA4emdhekVSaDVOa2txbFIxa2hWTUtXRzI0WnFkWTF5MFEKeExpUzd3TnlWQzBwOXZ2TFlqNFR0VzljZG53eXc0TkRmY0RCNVFyellqSUVreU40RDlRcTFGT2V4ai8wSGRGLwpEWWNMTTJETHZzV1YyMGUvRlJZTmJoWWFKUmVtVjdTaFBoWk1MS1FraENzODdYcndOSDNDUWRJRmRyeEZUeDEyCm0reVFJVHpqeU1wOXJZN0hrM1hRQ011ZWFlbUtTYVJYL0RQai9hZ1FkaUtXZyt4WjRLUzZXSU1zaVpaamUvUUUKMFM4bVdmZWV1Q0kxbVFtbkNselppN0YxcWNuR0dRczl2NTMvd0tpbFVlQStobUQ4THBDYUNwR2IvTFpEYWR5SQpjNVFNb2VBV0p5MEYvL0gzQzRadWd5NWk0L3I2ZGt6RWkzSGxQYnJsa3h4VCtGZGk4N3BvQ3ZhSTZTZ2dsUkxkCm9yVTVjQ3k3MjBWYi9YSURkSmRaTE83U2tpMG5Ub3pFZmxYV2tDREJQb3dOSzdFRWlta3VVbytsWU94OU5IVWwKU1hTWElZVW5vdkNEbXBBZmUydDVsTEI1ZXEweUY3TTRvWU4xbG16Lzh1WUpEdllRQUpNQU9ERlVjbU8za1JZZApNb2d6K3VNRnk4SzdIZjBOOXQwN1pWTGRzdnhMZjRnb0I3VmxCbTI1TW5FTzRIdzI5enBxYURGNE9DaU5CaXpjClAraVF0MWsxUmc9PQotLS0tLUVORCBDRVJUSUZJQ0FURS0tLS0tCg==
+    admissionReviewVersions: ['v1']
+    sideEffects: None
+    rules:
+      - operations: [ "UPDATE" ]
+        apiGroups: ["*"]
+        apiVersions: ["*"]
+        resources: ["nodes/status"] # Using /status subresource doesn't protect from other users changing the annotations
+        scope: "*"
+
+# in non-ic environments ovnkube-node doesn't have the permissions to update pods
+
